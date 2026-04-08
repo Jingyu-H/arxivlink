@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PaperGraph — OpenAlex Paper Explorer</title>
+    <title>arXiv Linker1 — OpenAlex Paper Explorer</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
@@ -13,7 +13,7 @@
         .topbar input{flex:1;padding:8px 16px;border:2px solid #2d3040;border-radius:24px;font-size:.95em;outline:none;background:#12141c;color:#e0e0e0;transition:border-color .2s}
         .topbar input:focus{border-color:#7c8cf8}
         .topbar input::placeholder{color:#666}
-        .topbar button{padding:8px 20px;background:#7c8cf8;color:#fff;border:none;border-radius:24px;cursor:pointer;font-size:.95em;font-weight:600}
+        .topbar button{padding:8px 20px;background:#7c8cf8;color:#fff;border:none;border-radius:24px;cursor:pointer;font-size:.95em;font-weight:600;transition:background .2s}
         .topbar button:hover{background:#6b7ce8}
         .topbar button:disabled{background:#444;cursor:not-allowed}
         .container{display:flex;height:calc(100vh - 56px)}
@@ -41,23 +41,23 @@
 <body>
 
 <div class="topbar">
-    <h1>📄 PaperGraph</h1>
-    <input id="searchInput" type="text" placeholder="搜索论文关键词 (如 graph neural network, transformer…)">
-    <button id="searchBtn" onclick="doSearch()">搜索</button>
+    <h1>🔗 arXiv Linker1</h1>
+    <input id="searchInput" type="text" placeholder="Search keywords (e.g. graph neural network, transformer…)">
+    <button id="searchBtn" onclick="doSearch()">Search</button>
     <span id="status" style="font-size:.78em;color:#888;white-space:nowrap"></span>
 </div>
 
 <div class="container">
     <div style="position:relative;flex:1;overflow:hidden">
         <svg id="graph"></svg>
-        <div class="hint" id="hint">输入关键词后点击搜索<br>即可生成论文关联图谱<br><span style="font-size:.8em;color:#444">数据来源: OpenAlex (免费开放学术数据库)</span></div>
-        <div class="loader-wrap" id="loader"><div class="spinner"></div><span>正在检索论文…</span></div>
+        <div class="hint" id="hint">Generate Link Graph<br><span style="font-size:.8em;color:#444">Source: OpenAlex (Free Open Academic Database)</span></div>
+        <div class="loader-wrap" id="loader"><div class="spinner"></div><span>Searching papers…</span></div>
         <div class="legend" id="legend" style="display:none">
-            <div><strong>节点颜色</strong> = 发表年份</div>
+            <div><strong>Node Color</strong> = Publication Year</div>
             <div class="bar" id="legendBar"></div>
             <div class="labels"><span id="legendMin"></span><span id="legendMax"></span></div>
-            <div style="margin-top:6px"><strong>节点大小</strong> = 被引次数</div>
-            <div style="margin-top:4px"><strong>连线粗细</strong> = 摘要相似度</div>
+            <div style="margin-top:6px"><strong>Node Size</strong> = Citation Count</div>
+            <div style="margin-top:4px"><strong>Line Thickness</strong> = Abstract Similarity</div>
         </div>
     </div>
     <div class="panel hidden" id="panel">
@@ -66,7 +66,7 @@
         <div class="meta" id="panelMeta"></div>
         <span class="cite-badge" id="panelCite"></span>
         <br><br>
-        <a id="panelLink" href="#" target="_blank">→ 查看原文 (DOI)</a>
+        <a id="panelLink" href="#" target="_blank">→ View Original (DOI)</a>
         <div class="abstract" id="panelAbstract"></div>
     </div>
 </div>
@@ -74,190 +74,231 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-/* ========== OpenAlex API (免费, 支持 CORS, 快速) ========== */
+/* ========== DOM References (cached once) ========== */
+const $  = id => document.getElementById(id);
+const el = {
+    search: $('searchInput'), btn: $('searchBtn'), status: $('status'),
+    hint: $('hint'), loader: $('loader'), panel: $('panel'), tooltip: $('tooltip'),
+    graph: d3.select('#graph'), legend: $('legend'),
+    panelTitle: $('panelTitle'), panelAuthors: $('panelAuthors'),
+    panelMeta: $('panelMeta'), panelCite: $('panelCite'),
+    panelLink: $('panelLink'), panelAbstract: $('panelAbstract'),
+    legendBar: $('legendBar'), legendMin: $('legendMin'), legendMax: $('legendMax')
+};
+
+/* ========== OpenAlex API (free, CORS-enabled) ========== */
 async function fetchOpenAlex(query, max = 30) {
-    const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per_page=${max}&sort=relevance_score:desc&select=id,doi,title,authorships,publication_year,cited_by_count,abstract_inverted_index&mailto=papergraph@example.com`;
+    const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per_page=${max}&sort=relevance_score:desc&select=id,doi,title,authorships,publication_year,cited_by_count,abstract_inverted_index&mailto=arxivlinker@example.com`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`OpenAlex API 返回 ${res.status}`);
-    const data = await res.json();
-    if (!data.results || !data.results.length) return [];
-    return data.results
+    if (!res.ok) throw new Error(`OpenAlex API returned ${res.status}`);
+    const { results } = await res.json();
+    if (!results?.length) return [];
+
+    return results
         .filter(w => w.abstract_inverted_index && Object.keys(w.abstract_inverted_index).length > 5)
-        .map(w => {
-            /* 反转索引 → 摘要文本 */
-            const abs = invertedIndexToText(w.abstract_inverted_index);
-            const authors = (w.authorships || []).map(a => a.author?.display_name).filter(Boolean);
-            return {
-                id: w.id,
-                title: w.title || 'Untitled',
-                summary: abs,
-                authors,
-                year: w.publication_year || 2023,
-                citations: w.cited_by_count || 0,
-                link: w.doi || w.id
-            };
-        });
+        .map(w => ({
+            id:        w.id,
+            title:     w.title || 'Untitled',
+            summary:   invertedIndexToText(w.abstract_inverted_index),
+            authors:   (w.authorships || []).map(a => a.author?.display_name).filter(Boolean),
+            year:      w.publication_year || 2023,
+            citations: w.cited_by_count || 0,
+            link:      w.doi || w.id
+        }));
 }
 
-/* OpenAlex 返回的摘要是 inverted_index 格式, 需要还原 */
 function invertedIndexToText(idx) {
     if (!idx) return '';
     const arr = [];
-    for (const [word, positions] of Object.entries(idx)) {
+    for (const [word, positions] of Object.entries(idx))
         for (const pos of positions) arr[pos] = word;
-    }
     return arr.join(' ');
 }
 
-/* ========== TF-IDF 相似度 ========== */
-const STOP = new Set('the a an and or but in on at to for of is it this that with from by as are was were be been being have has had do does did will would shall should may might can could not no nor so if then than also very just about above after again all am any because before below between both during each few further get got he her here him his how its let me more most my now only other our out own same she some such them then these they this those through too under until up we were what when where which while who whom why you your into over able use used using one two new also based can method results show paper propose proposed model models data set approach'.split(' '));
-function tokenize(t) { return t.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)); }
+/* ========== TF-IDF Similarity ========== */
+const STOP = new Set(
+    'the a an and or but in on at to for of is it this that with from by as are was were be been being have has had do does did will would shall should may might can could not no nor so if then than also very just about above after again all am any because before below between both during each few further get got he her here him his how its let me more most my now only other our out own same she some such them then these they this those through too under until up we were what when where which while who whom why you your into over able use used using one two new also based can method results show paper propose proposed model models data set approach'
+    .split(' ')
+);
+
+function tokenize(text) {
+    return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
+        .filter(w => w.length > 2 && !STOP.has(w));
+}
 
 function computeLinks(papers) {
     const n = papers.length;
-    const docs = papers.map(p => tokenize(p.title + ' ' + p.title + ' ' + p.summary));
+    // Tokenize: title weighted 2x by concatenation
+    const docs = papers.map(p => tokenize(`${p.title} ${p.title} ${p.summary}`));
+
+    // Document frequency
     const df = {};
-    docs.forEach(d => new Set(d).forEach(w => df[w] = (df[w]||0)+1));
+    docs.forEach(d => { for (const w of new Set(d)) df[w] = (df[w] || 0) + 1; });
+
+    // TF-IDF vectors
+    const logN = Math.log(n);
     const vecs = docs.map(d => {
-        const tf = {}; d.forEach(w => tf[w] = (tf[w]||0)+1);
-        const v = {}; for (const w in tf) v[w] = (tf[w]/d.length) * Math.log(n/(df[w]||1)); return v;
+        const tf = {};
+        for (const w of d) tf[w] = (tf[w] || 0) + 1;
+        const v = {};
+        const len = d.length || 1;
+        for (const w in tf) v[w] = (tf[w] / len) * (logN - Math.log(df[w] || 1));
+        return v;
     });
+
     function cosine(a, b) {
-        let dot=0, ma=0, mb=0;
-        for (const k in a) { dot += a[k]*(b[k]||0); ma += a[k]*a[k]; }
-        for (const k in b) mb += b[k]*b[k];
-        return (ma && mb) ? dot/Math.sqrt(ma*mb) : 0;
+        let dot = 0, ma = 0, mb = 0;
+        for (const k in a) { dot += a[k] * (b[k] || 0); ma += a[k] * a[k]; }
+        for (const k in b) mb += b[k] * b[k];
+        return (ma && mb) ? dot / Math.sqrt(ma * mb) : 0;
     }
-    /* 每个节点保留 top-K 条边, 避免过多连线 */
-    const allEdges = [];
-    for (let i=0; i<n; i++) for (let j=i+1; j<n; j++) {
-        const s = cosine(vecs[i], vecs[j]);
-        if (s > 0.05) allEdges.push({source:i, target:j, value:s});
-    }
-    allEdges.sort((a,b) => b.value - a.value);
-    const maxEdges = Math.min(allEdges.length, n * 3);
-    return allEdges.slice(0, maxEdges);
+
+    // Compute edges, keep top N*3
+    const edges = [];
+    for (let i = 0; i < n; i++)
+        for (let j = i + 1; j < n; j++) {
+            const s = cosine(vecs[i], vecs[j]);
+            if (s > 0.05) edges.push({ source: i, target: j, value: s });
+        }
+    edges.sort((a, b) => b.value - a.value);
+    return edges.slice(0, Math.min(edges.length, n * 3));
 }
 
-/* ========== D3 力导向图 ========== */
+/* ========== D3 Force-Directed Graph ========== */
 let sim;
+
 function renderGraph(papers, links) {
-    const svg = d3.select('#graph'); svg.selectAll('*').remove();
-    document.getElementById('hint').style.display = 'none';
+    const svg = el.graph;
+    svg.selectAll('*').remove();
+    el.hint.style.display = 'none';
+
     const rect = svg.node().parentElement.getBoundingClientRect();
     const W = rect.width, H = rect.height;
     svg.attr('width', W).attr('height', H);
 
     const years = papers.map(p => p.year);
     const minY = d3.min(years), maxY = d3.max(years);
-    const color = d3.scaleSequential(d3.interpolatePlasma).domain([minY, maxY+1]);
-
+    const color = d3.scaleSequential(d3.interpolatePlasma).domain([minY, maxY + 1]);
     const maxCite = d3.max(papers, p => p.citations) || 1;
     const size = d3.scaleSqrt().domain([0, maxCite]).range([6, 28]);
 
-    const nodes = papers.map((p,i) => ({idx:i, ...p, r:size(p.citations), col:color(p.year)}));
+    const nodes = papers.map((p, i) => ({ idx: i, ...p, r: size(p.citations), col: color(p.year) }));
 
     sim = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d=>d.idx).distance(90).strength(l => l.value * 0.6))
-        .force('charge', d3.forceManyBody().strength(-180))
-        .force('center', d3.forceCenter(W/2, H/2))
-        .force('collide', d3.forceCollide().radius(d => d.r+5));
+        .force('link',    d3.forceLink(links).id(d => d.idx).distance(90).strength(l => l.value * 0.6))
+        .force('charge',  d3.forceManyBody().strength(-180))
+        .force('center',  d3.forceCenter(W / 2, H / 2))
+        .force('collide', d3.forceCollide().radius(d => d.r + 5));
 
     const g = svg.append('g');
     svg.call(d3.zoom().scaleExtent([0.15, 8]).on('zoom', e => g.attr('transform', e.transform)));
 
-    /* 边 */
+    // Edges
     const linkEl = g.append('g').selectAll('line').data(links).join('line')
-        .attr('stroke', '#2d3040').attr('stroke-width', d => Math.max(.4, d.value*5)).attr('stroke-opacity', .5);
+        .attr('stroke', '#2d3040')
+        .attr('stroke-width', d => Math.max(0.4, d.value * 5))
+        .attr('stroke-opacity', 0.5);
 
-    /* 节点光晕 */
+    // Node glow
     const glowEl = g.append('g').selectAll('circle').data(nodes).join('circle')
-        .attr('r', d => d.r + 4).attr('fill', 'none').attr('stroke', d => d.col).attr('stroke-opacity', .15).attr('stroke-width', 6);
+        .attr('r', d => d.r + 4).attr('fill', 'none')
+        .attr('stroke', d => d.col).attr('stroke-opacity', 0.15).attr('stroke-width', 6);
 
-    /* 节点 */
+    // Nodes
     const nodeEl = g.append('g').selectAll('circle').data(nodes).join('circle')
-        .attr('r', d => d.r).attr('fill', d => d.col).attr('stroke', '#1a1d27').attr('stroke-width', 1.5).attr('cursor', 'pointer')
+        .attr('r', d => d.r).attr('fill', d => d.col)
+        .attr('stroke', '#1a1d27').attr('stroke-width', 1.5).attr('cursor', 'pointer')
         .call(d3.drag()
-            .on('start', (e,d) => { if(!e.active) sim.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
-            .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
-            .on('end', (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
+            .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+            .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+            .on('end',   (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    /* 标签 */
+    // Labels
     const labelEl = g.append('g').selectAll('text').data(nodes).join('text')
-        .attr('text-anchor','middle').attr('dy', d => d.r+14)
-        .attr('font-size','8.5px').attr('fill','#777').attr('pointer-events','none')
-        .text(d => d.title.length > 40 ? d.title.slice(0,38)+'…' : d.title);
+        .attr('text-anchor', 'middle').attr('dy', d => d.r + 14)
+        .attr('font-size', '8.5px').attr('fill', '#777').attr('pointer-events', 'none')
+        .text(d => d.title.length > 40 ? d.title.slice(0, 38) + '…' : d.title);
 
-    /* 交互 */
-    const tip = document.getElementById('tooltip');
-    nodeEl.on('mouseover', (e,d) => {
-        tip.style.display = 'block';
-        tip.innerHTML = `<strong>${d.title}</strong><br>${d.authors.slice(0,3).join(', ')}${d.authors.length>3?' …':''}<br>📅 ${d.year} · 📖 ${d.citations} 引用`;
-        d3.select(e.target).attr('stroke','#7c8cf8').attr('stroke-width',3);
-    })
-    .on('mousemove', e => { tip.style.left=(e.pageX+14)+'px'; tip.style.top=(e.pageY-16)+'px'; })
-    .on('mouseout', e => { tip.style.display='none'; d3.select(e.target).attr('stroke','#1a1d27').attr('stroke-width',1.5); })
-    .on('click', (e,d) => {
-        const p = document.getElementById('panel'); p.classList.remove('hidden');
-        document.getElementById('panelTitle').textContent = d.title;
-        document.getElementById('panelAuthors').textContent = d.authors.join(', ');
-        document.getElementById('panelMeta').textContent = `📅 ${d.year}`;
-        document.getElementById('panelCite').textContent = `📖 被引 ${d.citations} 次`;
-        document.getElementById('panelLink').href = d.link;
-        document.getElementById('panelAbstract').textContent = d.summary;
-        const nr = svg.node().parentElement.getBoundingClientRect(); svg.attr('width', nr.width);
-    });
+    // Tooltip & click interactions
+    const tip = el.tooltip;
+    nodeEl
+        .on('mouseover', (e, d) => {
+            tip.style.display = 'block';
+            const authorStr = d.authors.length > 3 ? d.authors.slice(0, 3).join(', ') + ' …' : d.authors.join(', ');
+            tip.innerHTML = `<strong>${d.title}</strong><br>${authorStr}<br>📅 ${d.year} · 📖 ${d.citations} citations`;
+            d3.select(e.target).attr('stroke', '#7c8cf8').attr('stroke-width', 3);
+        })
+        .on('mousemove', e => { tip.style.left = (e.pageX + 14) + 'px'; tip.style.top = (e.pageY - 16) + 'px'; })
+        .on('mouseout',  e => { tip.style.display = 'none'; d3.select(e.target).attr('stroke', '#1a1d27').attr('stroke-width', 1.5); })
+        .on('click', (e, d) => {
+            el.panel.classList.remove('hidden');
+            el.panelTitle.textContent   = d.title;
+            el.panelAuthors.textContent = d.authors.join(', ');
+            el.panelMeta.textContent    = `📅 ${d.year}`;
+            el.panelCite.textContent    = `📖 Cited ${d.citations} times`;
+            el.panelLink.href           = d.link;
+            el.panelAbstract.textContent = d.summary;
+            // Refit SVG width after panel opens
+            const nr = svg.node().parentElement.getBoundingClientRect();
+            svg.attr('width', nr.width);
+        });
 
+    // Tick
     sim.on('tick', () => {
-        linkEl.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
-        glowEl.attr('cx',d=>d.x).attr('cy',d=>d.y);
-        nodeEl.attr('cx',d=>d.x).attr('cy',d=>d.y);
-        labelEl.attr('x',d=>d.x).attr('y',d=>d.y);
+        linkEl.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+              .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        glowEl.attr('cx', d => d.x).attr('cy', d => d.y);
+        nodeEl.attr('cx', d => d.x).attr('cy', d => d.y);
+        labelEl.attr('x', d => d.x).attr('y', d => d.y);
     });
 
-    /* 图例 */
-    const leg = document.getElementById('legend'); leg.style.display = 'block';
-    document.getElementById('legendBar').style.background = `linear-gradient(to right, ${color(minY)}, ${color(Math.round((minY+maxY)/2))}, ${color(maxY)})`;
-    document.getElementById('legendMin').textContent = minY;
-    document.getElementById('legendMax').textContent = maxY;
+    // Legend
+    el.legend.style.display = 'block';
+    const midY = Math.round((minY + maxY) / 2);
+    el.legendBar.style.background = `linear-gradient(to right, ${color(minY)}, ${color(midY)}, ${color(maxY)})`;
+    el.legendMin.textContent = minY;
+    el.legendMax.textContent = maxY;
 }
 
-/* ========== 搜索主逻辑 ========== */
+/* ========== Search Logic ========== */
 async function doSearch() {
-    const query = document.getElementById('searchInput').value.trim();
+    const query = el.search.value.trim();
     if (!query) return;
-    const status = document.getElementById('status');
-    const btn = document.getElementById('searchBtn');
-    const loader = document.getElementById('loader');
-    btn.disabled = true;
-    loader.classList.add('active');
-    document.getElementById('hint').style.display = 'none';
-    document.getElementById('panel').classList.add('hidden');
-    status.textContent = '';
+
+    el.btn.disabled = true;
+    el.loader.classList.add('active');
+    el.hint.style.display = 'none';
+    el.panel.classList.add('hidden');
+    el.status.textContent = '';
 
     try {
-        status.textContent = '⏳ OpenAlex 检索中…';
+        el.status.textContent = '⏳ Querying OpenAlex…';
         const papers = await fetchOpenAlex(query, 30);
-        if (!papers.length) { status.textContent = '❌ 未找到相关论文'; btn.disabled=false; loader.classList.remove('active'); return; }
 
-        status.textContent = `⏳ ${papers.length} 篇，计算关联…`;
+        if (!papers.length) {
+            el.status.textContent = '❌ No relevant papers found';
+            return;
+        }
+
+        el.status.textContent = `⏳ ${papers.length} papers found, computing links…`;
         const links = computeLinks(papers);
-        loader.classList.remove('active');
-        status.textContent = `✅ ${papers.length} 篇 · ${links.length} 条关联 · OpenAlex`;
+
+        el.status.textContent = `✅ ${papers.length} papers · ${links.length} links · OpenAlex`;
         renderGraph(papers, links);
-    } catch(err) {
-        status.textContent = '❌ ' + err.message;
+    } catch (err) {
+        el.status.textContent = '❌ ' + err.message;
         console.error(err);
+    } finally {
+        el.btn.disabled = false;
+        el.loader.classList.remove('active');
     }
-    btn.disabled = false;
-    loader.classList.remove('active');
 }
 
-document.getElementById('searchInput').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+/* ========== Event Listeners ========== */
+el.search.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 window.addEventListener('resize', () => {
-    const svg = d3.select('#graph');
-    const rect = svg.node().parentElement.getBoundingClientRect();
-    svg.attr('width', rect.width).attr('height', rect.height);
+    const rect = el.graph.node().parentElement.getBoundingClientRect();
+    el.graph.attr('width', rect.width).attr('height', rect.height);
 });
 </script>
 </body>
