@@ -3,59 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PaperGraph — arXiv Paper Explorer</title>
+    <title>PaperGraph — OpenAlex Paper Explorer</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Segoe UI','PingFang SC',sans-serif;background:#f0f2f5;overflow:hidden;height:100vh}
-        .topbar{background:#fff;padding:12px 24px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,.1);z-index:10;position:relative}
-        .topbar h1{font-size:1.15em;color:#667eea;white-space:nowrap}
-        .topbar input{flex:1;padding:8px 16px;border:2px solid #e0e0e0;border-radius:24px;font-size:.95em;outline:none;transition:border-color .2s}
-        .topbar input:focus{border-color:#667eea}
-        .topbar button{padding:8px 20px;background:#667eea;color:#fff;border:none;border-radius:24px;cursor:pointer;font-size:.95em}
-        .topbar button:hover{background:#5a6fd6}
+        body{font-family:'Segoe UI','PingFang SC',sans-serif;background:#0f1117;overflow:hidden;height:100vh;color:#e0e0e0}
+        .topbar{background:#1a1d27;padding:12px 24px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:10;position:relative}
+        .topbar h1{font-size:1.1em;color:#7c8cf8;white-space:nowrap}
+        .topbar input{flex:1;padding:8px 16px;border:2px solid #2d3040;border-radius:24px;font-size:.95em;outline:none;background:#12141c;color:#e0e0e0;transition:border-color .2s}
+        .topbar input:focus{border-color:#7c8cf8}
+        .topbar input::placeholder{color:#666}
+        .topbar button{padding:8px 20px;background:#7c8cf8;color:#fff;border:none;border-radius:24px;cursor:pointer;font-size:.95em;font-weight:600}
+        .topbar button:hover{background:#6b7ce8}
+        .topbar button:disabled{background:#444;cursor:not-allowed}
         .container{display:flex;height:calc(100vh - 56px)}
-        #graph{flex:1;width:100%;height:100%;background:#f8f9fb}
-        .panel{width:340px;background:#fff;border-left:1px solid #e8e8e8;padding:24px;overflow-y:auto;flex-shrink:0}
+        .panel{width:360px;background:#1a1d27;border-left:1px solid #2d3040;padding:24px;overflow-y:auto;flex-shrink:0}
         .panel.hidden{display:none}
-        .panel h2{font-size:1.05em;color:#333;margin-bottom:8px;line-height:1.4}
-        .panel .authors{font-size:.85em;color:#666;margin-bottom:6px}
-        .panel .date{font-size:.8em;color:#999;margin-bottom:12px}
-        .panel .abstract{font-size:.88em;color:#444;line-height:1.6;margin-top:12px}
-        .panel a{color:#667eea;text-decoration:none;font-size:.9em}
+        .panel h2{font-size:1.05em;color:#e8e8e8;margin-bottom:8px;line-height:1.5}
+        .panel .authors{font-size:.82em;color:#aaa;margin-bottom:6px}
+        .panel .meta{font-size:.8em;color:#888;margin-bottom:12px}
+        .panel .cite-badge{display:inline-block;font-size:.78em;color:#7c8cf8;background:rgba(124,140,248,.12);padding:3px 10px;border-radius:12px;margin-right:6px}
+        .panel a{color:#7c8cf8;text-decoration:none;font-size:.9em}
         .panel a:hover{text-decoration:underline}
-        .legend{position:absolute;bottom:20px;left:20px;background:rgba(255,255,255,.92);border-radius:8px;padding:10px 14px;font-size:.75em;color:#666;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+        .panel .abstract{font-size:.85em;color:#bbb;line-height:1.65;margin-top:14px;border-top:1px solid #2d3040;padding-top:14px}
+        .legend{position:absolute;bottom:20px;left:20px;background:rgba(26,29,39,.95);border-radius:10px;padding:12px 16px;font-size:.75em;color:#999;box-shadow:0 2px 8px rgba(0,0,0,.3);border:1px solid #2d3040}
         .legend .bar{width:120px;height:10px;border-radius:4px;margin:4px 0}
         .legend .labels{display:flex;justify-content:space-between;font-size:.9em}
-        .tooltip{position:absolute;background:rgba(30,30,30,.9);color:#fff;padding:8px 14px;border-radius:8px;font-size:.8em;max-width:320px;pointer-events:none;z-index:100;line-height:1.5;display:none}
-        .hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#bbb;font-size:1.1em;text-align:center;line-height:2}
+        .tooltip{position:absolute;background:rgba(20,22,30,.95);color:#e0e0e0;padding:10px 16px;border-radius:10px;font-size:.8em;max-width:350px;pointer-events:none;z-index:100;line-height:1.5;border:1px solid #2d3040;display:none}
+        .hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#555;font-size:1.05em;text-align:center;line-height:2.2}
+        .loader-wrap{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;display:none;z-index:20}
+        .loader-wrap.active{display:block}
+        .spinner{width:36px;height:36px;border:3px solid #2d3040;border-top-color:#7c8cf8;border-radius:50%;animation:spin .6s linear infinite;margin:0 auto 12px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .loader-wrap span{font-size:.85em;color:#888}
     </style>
 </head>
 <body>
 
 <div class="topbar">
     <h1>📄 PaperGraph</h1>
-    <input id="searchInput" type="text" placeholder="输入关键词 (如 graph neural network) 或 arXiv ID (如 2105.01234)">
-    <button onclick="doSearch()">搜索</button>
-    <span id="status" style="font-size:.8em;color:#999;white-space:nowrap"></span>
+    <input id="searchInput" type="text" placeholder="搜索论文关键词 (如 graph neural network, transformer…)">
+    <button id="searchBtn" onclick="doSearch()">搜索</button>
+    <span id="status" style="font-size:.78em;color:#888;white-space:nowrap"></span>
 </div>
 
 <div class="container">
     <div style="position:relative;flex:1;overflow:hidden">
         <svg id="graph"></svg>
-        <div class="hint" id="hint">输入关键词后点击搜索<br>即可生成论文关联图谱</div>
+        <div class="hint" id="hint">输入关键词后点击搜索<br>即可生成论文关联图谱<br><span style="font-size:.8em;color:#444">数据来源: OpenAlex (免费开放学术数据库)</span></div>
+        <div class="loader-wrap" id="loader"><div class="spinner"></div><span>正在检索论文…</span></div>
         <div class="legend" id="legend" style="display:none">
             <div><strong>节点颜色</strong> = 发表年份</div>
             <div class="bar" id="legendBar"></div>
             <div class="labels"><span id="legendMin"></span><span id="legendMax"></span></div>
-            <div style="margin-top:6px"><strong>节点大小</strong> = 关联数量</div>
+            <div style="margin-top:6px"><strong>节点大小</strong> = 被引次数</div>
+            <div style="margin-top:4px"><strong>连线粗细</strong> = 摘要相似度</div>
         </div>
     </div>
     <div class="panel hidden" id="panel">
         <h2 id="panelTitle"></h2>
         <div class="authors" id="panelAuthors"></div>
-        <div class="date" id="panelDate"></div>
-        <a id="panelLink" href="#" target="_blank">→ 在 arXiv 上查看全文</a>
+        <div class="meta" id="panelMeta"></div>
+        <span class="cite-badge" id="panelCite"></span>
+        <br><br>
+        <a id="panelLink" href="#" target="_blank">→ 查看原文 (DOI)</a>
         <div class="abstract" id="panelAbstract"></div>
     </div>
 </div>
@@ -63,184 +74,191 @@
 <div class="tooltip" id="tooltip"></div>
 
 <script>
-/* ========== arXiv API ========== */
-async function fetchArxiv(query, max = 25) {
-    const isId = /^\d{4}\.\d{4,5}(v\d+)?$/.test(query.trim());
-    const url = isId
-        ? `https://export.arxiv.org/api/query?id_list=${query.trim()}&max_results=1`
-        : `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&start=0&max_results=${max}&sortBy=relevance&sortOrder=descending`;
+/* ========== OpenAlex API (免费, 支持 CORS, 快速) ========== */
+async function fetchOpenAlex(query, max = 30) {
+    const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per_page=${max}&sort=relevance_score:desc&select=id,doi,title,authorships,publication_year,cited_by_count,abstract_inverted_index&mailto=papergraph@example.com`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error('arXiv API 请求失败');
-    const txt = await res.text();
-    const doc = new DOMParser().parseFromString(txt, 'text/xml');
-    return Array.from(doc.querySelectorAll('entry')).map(e => {
-        const id = e.querySelector('id').textContent.trim();
-        return {
-            id: id.replace(/https?:\/\/arxiv\.org\/abs\//, ''),
-            title: e.querySelector('title').textContent.replace(/\s+/g, ' ').trim(),
-            summary: e.querySelector('summary').textContent.replace(/\s+/g, ' ').trim(),
-            authors: Array.from(e.querySelectorAll('author name')).map(n => n.textContent),
-            published: e.querySelector('published').textContent.slice(0, 10),
-            link: id
-        };
-    });
+    if (!res.ok) throw new Error(`OpenAlex API 返回 ${res.status}`);
+    const data = await res.json();
+    if (!data.results || !data.results.length) return [];
+    return data.results
+        .filter(w => w.abstract_inverted_index && Object.keys(w.abstract_inverted_index).length > 5)
+        .map(w => {
+            /* 反转索引 → 摘要文本 */
+            const abs = invertedIndexToText(w.abstract_inverted_index);
+            const authors = (w.authorships || []).map(a => a.author?.display_name).filter(Boolean);
+            return {
+                id: w.id,
+                title: w.title || 'Untitled',
+                summary: abs,
+                authors,
+                year: w.publication_year || 2023,
+                citations: w.cited_by_count || 0,
+                link: w.doi || w.id
+            };
+        });
 }
 
-/* ========== 文本处理与相似度 ========== */
-const STOP = new Set('the a an and or but in on at to for of is it this that with from by as are was were be been being have has had do does did will would shall should may might can could not no nor so if then than also very just about above after again all am any because before below between both during each few further get got he her here him his how its let me more most my now only other our out own same she some such them then these they this those through too under until up we were what when where which while who whom why you your into over able'.split(' '));
-
-function tokenize(text) {
-    return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
+/* OpenAlex 返回的摘要是 inverted_index 格式, 需要还原 */
+function invertedIndexToText(idx) {
+    if (!idx) return '';
+    const arr = [];
+    for (const [word, positions] of Object.entries(idx)) {
+        for (const pos of positions) arr[pos] = word;
+    }
+    return arr.join(' ');
 }
+
+/* ========== TF-IDF 相似度 ========== */
+const STOP = new Set('the a an and or but in on at to for of is it this that with from by as are was were be been being have has had do does did will would shall should may might can could not no nor so if then than also very just about above after again all am any because before below between both during each few further get got he her here him his how its let me more most my now only other our out own same she some such them then these they this those through too under until up we were what when where which while who whom why you your into over able use used using one two new also based can method results show paper propose proposed model models data set approach'.split(' '));
+function tokenize(t) { return t.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)); }
 
 function computeLinks(papers) {
     const n = papers.length;
     const docs = papers.map(p => tokenize(p.title + ' ' + p.title + ' ' + p.summary));
-    /* DF */
     const df = {};
-    docs.forEach(d => new Set(d).forEach(w => df[w] = (df[w] || 0) + 1));
-    /* TF-IDF 向量 */
+    docs.forEach(d => new Set(d).forEach(w => df[w] = (df[w]||0)+1));
     const vecs = docs.map(d => {
-        const tf = {};
-        d.forEach(w => tf[w] = (tf[w] || 0) + 1);
-        const v = {};
-        for (const w in tf) v[w] = (tf[w] / d.length) * Math.log(n / (df[w] || 1));
-        return v;
+        const tf = {}; d.forEach(w => tf[w] = (tf[w]||0)+1);
+        const v = {}; for (const w in tf) v[w] = (tf[w]/d.length) * Math.log(n/(df[w]||1)); return v;
     });
-    /* 余弦相似度 */
     function cosine(a, b) {
-        let dot = 0, ma = 0, mb = 0;
-        for (const k in a) { const vb = b[k] || 0; dot += a[k] * vb; ma += a[k] * a[k]; }
-        for (const k in b) mb += b[k] * b[k];
-        return (ma && mb) ? dot / (Math.sqrt(ma) * Math.sqrt(mb)) : 0;
+        let dot=0, ma=0, mb=0;
+        for (const k in a) { dot += a[k]*(b[k]||0); ma += a[k]*a[k]; }
+        for (const k in b) mb += b[k]*b[k];
+        return (ma && mb) ? dot/Math.sqrt(ma*mb) : 0;
     }
-    const links = [];
-    for (let i = 0; i < n; i++)
-        for (let j = i + 1; j < n; j++) {
-            const sim = cosine(vecs[i], vecs[j]);
-            if (sim > 0.06) links.push({ source: i, target: j, value: sim });
-        }
-    return links;
+    /* 每个节点保留 top-K 条边, 避免过多连线 */
+    const allEdges = [];
+    for (let i=0; i<n; i++) for (let j=i+1; j<n; j++) {
+        const s = cosine(vecs[i], vecs[j]);
+        if (s > 0.05) allEdges.push({source:i, target:j, value:s});
+    }
+    allEdges.sort((a,b) => b.value - a.value);
+    const maxEdges = Math.min(allEdges.length, n * 3);
+    return allEdges.slice(0, maxEdges);
 }
 
-/* ========== D3 力导向图渲染 ========== */
+/* ========== D3 力导向图 ========== */
 let sim;
 function renderGraph(papers, links) {
-    const svg = d3.select('#graph');
-    svg.selectAll('*').remove();
+    const svg = d3.select('#graph'); svg.selectAll('*').remove();
     document.getElementById('hint').style.display = 'none';
-
     const rect = svg.node().parentElement.getBoundingClientRect();
     const W = rect.width, H = rect.height;
     svg.attr('width', W).attr('height', H);
 
-    /* 年份色阶 */
-    const years = papers.map(p => +p.published.slice(0, 4));
+    const years = papers.map(p => p.year);
     const minY = d3.min(years), maxY = d3.max(years);
-    const color = d3.scaleSequential(d3.interpolatePlasma).domain([minY, maxY + 1]);
+    const color = d3.scaleSequential(d3.interpolatePlasma).domain([minY, maxY+1]);
 
-    /* 度数 → 大小 */
-    const deg = Array(papers.length).fill(0);
-    links.forEach(l => { deg[l.source]++; deg[l.target]++; });
-    const size = d3.scaleSqrt().domain([0, d3.max(deg) || 1]).range([7, 24]);
+    const maxCite = d3.max(papers, p => p.citations) || 1;
+    const size = d3.scaleSqrt().domain([0, maxCite]).range([6, 28]);
 
-    const nodes = papers.map((p, i) => ({ idx: i, ...p, r: size(deg[i]), col: color(years[i]) }));
+    const nodes = papers.map((p,i) => ({idx:i, ...p, r:size(p.citations), col:color(p.year)}));
 
     sim = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.idx).distance(90).strength(l => l.value * 0.8))
+        .force('link', d3.forceLink(links).id(d=>d.idx).distance(90).strength(l => l.value * 0.6))
         .force('charge', d3.forceManyBody().strength(-180))
-        .force('center', d3.forceCenter(W / 2, H / 2))
-        .force('collide', d3.forceCollide().radius(d => d.r + 5));
+        .force('center', d3.forceCenter(W/2, H/2))
+        .force('collide', d3.forceCollide().radius(d => d.r+5));
 
     const g = svg.append('g');
-    svg.call(d3.zoom().scaleExtent([0.2, 6]).on('zoom', e => g.attr('transform', e.transform)));
+    svg.call(d3.zoom().scaleExtent([0.15, 8]).on('zoom', e => g.attr('transform', e.transform)));
 
+    /* 边 */
     const linkEl = g.append('g').selectAll('line').data(links).join('line')
-        .attr('stroke', '#d0d0d0').attr('stroke-width', d => Math.max(.5, d.value * 6)).attr('stroke-opacity', .45);
+        .attr('stroke', '#2d3040').attr('stroke-width', d => Math.max(.4, d.value*5)).attr('stroke-opacity', .5);
 
+    /* 节点光晕 */
+    const glowEl = g.append('g').selectAll('circle').data(nodes).join('circle')
+        .attr('r', d => d.r + 4).attr('fill', 'none').attr('stroke', d => d.col).attr('stroke-opacity', .15).attr('stroke-width', 6);
+
+    /* 节点 */
     const nodeEl = g.append('g').selectAll('circle').data(nodes).join('circle')
-        .attr('r', d => d.r).attr('fill', d => d.col).attr('stroke', '#fff').attr('stroke-width', 1.5).attr('cursor', 'pointer')
+        .attr('r', d => d.r).attr('fill', d => d.col).attr('stroke', '#1a1d27').attr('stroke-width', 1.5).attr('cursor', 'pointer')
         .call(d3.drag()
-            .on('start', (e, d) => { if (!e.active) sim.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y; })
-            .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
-            .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+            .on('start', (e,d) => { if(!e.active) sim.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
+            .on('drag', (e,d) => { d.fx=e.x; d.fy=e.y; })
+            .on('end', (e,d) => { if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }));
 
+    /* 标签 */
     const labelEl = g.append('g').selectAll('text').data(nodes).join('text')
-        .attr('text-anchor', 'middle').attr('dy', d => d.r + 13)
-        .attr('font-size', '9px').attr('fill', '#555').attr('pointer-events', 'none')
-        .text(d => d.title.length > 36 ? d.title.slice(0, 34) + '…' : d.title);
+        .attr('text-anchor','middle').attr('dy', d => d.r+14)
+        .attr('font-size','8.5px').attr('fill','#777').attr('pointer-events','none')
+        .text(d => d.title.length > 40 ? d.title.slice(0,38)+'…' : d.title);
 
-    /* tooltip & 点击 */
+    /* 交互 */
     const tip = document.getElementById('tooltip');
-    nodeEl.on('mouseover', (e, d) => {
+    nodeEl.on('mouseover', (e,d) => {
         tip.style.display = 'block';
-        tip.innerHTML = `<strong>${d.title}</strong><br>${d.authors.slice(0, 3).join(', ')}${d.authors.length > 3 ? ' …' : ''}<br>📅 ${d.published}`;
-        d3.select(e.target).attr('stroke', '#667eea').attr('stroke-width', 3);
+        tip.innerHTML = `<strong>${d.title}</strong><br>${d.authors.slice(0,3).join(', ')}${d.authors.length>3?' …':''}<br>📅 ${d.year} · 📖 ${d.citations} 引用`;
+        d3.select(e.target).attr('stroke','#7c8cf8').attr('stroke-width',3);
     })
-    .on('mousemove', e => { tip.style.left = (e.pageX + 14) + 'px'; tip.style.top = (e.pageY - 16) + 'px'; })
-    .on('mouseout', (e) => { tip.style.display = 'none'; d3.select(e.target).attr('stroke', '#fff').attr('stroke-width', 1.5); })
-    .on('click', (e, d) => {
+    .on('mousemove', e => { tip.style.left=(e.pageX+14)+'px'; tip.style.top=(e.pageY-16)+'px'; })
+    .on('mouseout', e => { tip.style.display='none'; d3.select(e.target).attr('stroke','#1a1d27').attr('stroke-width',1.5); })
+    .on('click', (e,d) => {
         const p = document.getElementById('panel'); p.classList.remove('hidden');
         document.getElementById('panelTitle').textContent = d.title;
         document.getElementById('panelAuthors').textContent = d.authors.join(', ');
-        document.getElementById('panelDate').textContent = '发表日期: ' + d.published;
+        document.getElementById('panelMeta').textContent = `📅 ${d.year}`;
+        document.getElementById('panelCite').textContent = `📖 被引 ${d.citations} 次`;
         document.getElementById('panelLink').href = d.link;
         document.getElementById('panelAbstract').textContent = d.summary;
-        /* 重新计算 SVG 尺寸 */
-        const nr = svg.node().parentElement.getBoundingClientRect();
-        svg.attr('width', nr.width);
+        const nr = svg.node().parentElement.getBoundingClientRect(); svg.attr('width', nr.width);
     });
 
     sim.on('tick', () => {
-        linkEl.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-        nodeEl.attr('cx', d => d.x).attr('cy', d => d.y);
-        labelEl.attr('x', d => d.x).attr('y', d => d.y);
+        linkEl.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+        glowEl.attr('cx',d=>d.x).attr('cy',d=>d.y);
+        nodeEl.attr('cx',d=>d.x).attr('cy',d=>d.y);
+        labelEl.attr('x',d=>d.x).attr('y',d=>d.y);
     });
 
     /* 图例 */
     const leg = document.getElementById('legend'); leg.style.display = 'block';
-    document.getElementById('legendBar').style.background = `linear-gradient(to right, ${color(minY)}, ${color(Math.round((minY + maxY) / 2))}, ${color(maxY)})`;
+    document.getElementById('legendBar').style.background = `linear-gradient(to right, ${color(minY)}, ${color(Math.round((minY+maxY)/2))}, ${color(maxY)})`;
     document.getElementById('legendMin').textContent = minY;
     document.getElementById('legendMax').textContent = maxY;
 }
 
-/* ========== 搜索主函数 ========== */
+/* ========== 搜索主逻辑 ========== */
 async function doSearch() {
     const query = document.getElementById('searchInput').value.trim();
     if (!query) return;
     const status = document.getElementById('status');
-    status.textContent = '⏳ 正在从 arXiv 获取论文…';
+    const btn = document.getElementById('searchBtn');
+    const loader = document.getElementById('loader');
+    btn.disabled = true;
+    loader.classList.add('active');
+    document.getElementById('hint').style.display = 'none';
     document.getElementById('panel').classList.add('hidden');
+    status.textContent = '';
 
     try {
-        const isId = /^\d{4}\.\d{4,5}(v\d+)?$/.test(query);
-        let papers;
-        if (isId) {
-            const seed = await fetchArxiv(query);
-            if (!seed.length) { status.textContent = '❌ 未找到该论文'; return; }
-            const kw = tokenize(seed[0].title).slice(0, 5).join(' ');
-            const related = await fetchArxiv(kw, 24);
-            const ids = new Set();
-            papers = [seed[0]];
-            ids.add(seed[0].id);
-            related.forEach(p => { if (!ids.has(p.id)) { papers.push(p); ids.add(p.id); } });
-            papers = papers.slice(0, 25);
-        } else {
-            papers = await fetchArxiv(query, 25);
-        }
-        if (!papers.length) { status.textContent = '❌ 未找到相关论文'; return; }
+        status.textContent = '⏳ OpenAlex 检索中…';
+        const papers = await fetchOpenAlex(query, 30);
+        if (!papers.length) { status.textContent = '❌ 未找到相关论文'; btn.disabled=false; loader.classList.remove('active'); return; }
 
-        status.textContent = `⏳ 已获取 ${papers.length} 篇，计算关联中…`;
+        status.textContent = `⏳ ${papers.length} 篇，计算关联…`;
         const links = computeLinks(papers);
-        status.textContent = `✅ ${papers.length} 篇论文 · ${links.length} 条关联`;
+        loader.classList.remove('active');
+        status.textContent = `✅ ${papers.length} 篇 · ${links.length} 条关联 · OpenAlex`;
         renderGraph(papers, links);
-    } catch (err) {
+    } catch(err) {
         status.textContent = '❌ ' + err.message;
         console.error(err);
     }
+    btn.disabled = false;
+    loader.classList.remove('active');
 }
 
-document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('searchInput').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(); });
+window.addEventListener('resize', () => {
+    const svg = d3.select('#graph');
+    const rect = svg.node().parentElement.getBoundingClientRect();
+    svg.attr('width', rect.width).attr('height', rect.height);
+});
 </script>
 </body>
 </html>
